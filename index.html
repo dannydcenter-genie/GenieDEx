@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>✨ GenieDEx Ultimate ✨</title>
+    <style>
+        body { font-family: 'Comic Sans MS', 'Arial', sans-serif; text-align: center; background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%); padding: 50px; color: #333; }
+        .card { background: white; max-width: 450px; margin: auto; padding: 30px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); border: 2px solid #ffcc00; }
+        h1 { color: #d4af37; margin-bottom: 10px; }
+        .balance-box { background: #f9f9f9; border-radius: 10px; padding: 15px; margin: 15px 0; display: flex; justify-content: space-between; font-weight: bold; }
+        input { padding: 15px; width: 80%; border: 2px solid #eee; border-radius: 10px; font-size: 18px; text-align: center; margin-bottom: 20px; }
+        button { background-color: #ffcc00; color: white; border: none; padding: 15px 30px; font-size: 18px; font-weight: bold; cursor: pointer; border-radius: 50px; transition: transform 0.2s; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        button:hover { transform: scale(1.05); background-color: #e6b800; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        #status { margin-top: 20px; font-size: 14px; color: #666; min-height: 20px; }
+        .emoji { font-size: 24px; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h1>✨ GenieDEx ✨</h1>
+        <p>Master's Trading Floor</p>
+        
+        <button id="connectBtn" onclick="connectWallet()">Connect Wallet 🦊</button>
+        
+        <div id="appInterface" style="display:none;">
+            
+            <div class="balance-box">
+                <span>🏆 Gold:</span> <span id="balA">0.0</span>
+            </div>
+            <div class="balance-box">
+                <span>🥈 Silver:</span> <span id="balB">0.0</span>
+            </div>
+
+            <div style="margin: 30px 0;">
+                <input type="number" id="amountIn" placeholder="Amount of Gold to Swap">
+                <br>
+                <span class="emoji">⬇️</span>
+            </div>
+
+            <button id="swapBtn" onclick="handleSwap()">SWAP NOW! 🔄</button>
+        </div>
+
+        <p id="status">Waiting for your command...</p>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+
+    <script>
+        // ---------------------------------------------------------
+        // 🔮 MASTER! PASTE YOUR ADDRESSES HERE (Again!)
+        // ---------------------------------------------------------
+        const DEX_ADDRESS     = "0x4F271512EF6e0f332Ff307E96dFb1E739f4a2a63";
+        const TOKEN_A_ADDRESS = "0xac32C7989Cb1602Ae692382588da1F9939844d46";
+        const TOKEN_B_ADDRESS = "0x221D4bA42889e9c3929B952B6f0117EfaD1aD3d4";
+        // ---------------------------------------------------------
+
+        const ERC20_ABI = [
+            "function balanceOf(address owner) view returns (uint256)",
+            "function approve(address spender, uint256 amount) public returns (bool)",
+            "function allowance(address owner, address spender) view returns (uint256)"
+        ];
+
+        const DEX_ABI = [
+            "function swapAforB(uint256 _amountIn, uint256 _minAmountOut) external"
+        ];
+
+        let provider, signer, dexContract, tokenA, tokenB;
+
+        async function connectWallet() {
+            if (window.ethereum) {
+                try {
+                    provider = new ethers.BrowserProvider(window.ethereum);
+                    signer = await provider.getSigner();
+                    const address = await signer.getAddress();
+                    
+                    // Setup Contracts
+                    tokenA = new ethers.Contract(TOKEN_A_ADDRESS, ERC20_ABI, signer);
+                    tokenB = new ethers.Contract(TOKEN_B_ADDRESS, ERC20_ABI, signer);
+                    dexContract = new ethers.Contract(DEX_ADDRESS, DEX_ABI, signer);
+
+                    document.getElementById("connectBtn").style.display = "none";
+                    document.getElementById("appInterface").style.display = "block";
+                    setStatus("✨ Ready to grant wishes!");
+                    
+                    updateBalances();
+
+                } catch (err) {
+                    setStatus("❌ Connection failed: " + err.message);
+                }
+            } else {
+                alert("Please install Metamask!");
+            }
+        }
+        async function updateBalances() {
+            try {
+                const address = await signer.getAddress();
+                console.log("🔮 Fetching balances for:", address);
+                console.log("📍 Token A Address:", TOKEN_A_ADDRESS);
+
+                // 1. Get raw balance from blockchain
+                const balA = await tokenA.balanceOf(address);
+                const balB = await tokenB.balanceOf(address);
+                
+                console.log("💰 Raw Gold:", balA.toString());
+                console.log("🥈 Raw Silver:", balB.toString());
+
+                // 2. Format it nicely (Divide by 10^18)
+                const formattedA = ethers.formatUnits(balA, 18);
+                const formattedB = ethers.formatUnits(balB, 18);
+
+                // 3. Update the screen
+                document.getElementById("balA").innerText = parseFloat(formattedA).toFixed(2);
+                document.getElementById("balB").innerText = parseFloat(formattedB).toFixed(2);
+                
+            } catch (err) {
+                console.error("❌ BALANCE ERROR:", err);
+                alert("⚠️ Error fetching balance! Check the Console (F12) for details.");
+            }
+        }
+        
+        async function handleSwap() {
+            const amountVal = document.getElementById("amountIn").value;
+            if (!amountVal || amountVal <= 0) {
+                setStatus("⚠️ Master, you cannot swap zero!");
+                return;
+            }
+
+            const amountWei = ethers.parseUnits(amountVal, 18);
+            const address = await signer.getAddress();
+            
+            setStatus("⏳ Checking permissions...");
+            document.getElementById("swapBtn").disabled = true;
+
+            try {
+                // 1. Check Allowance
+                const allowance = await tokenA.allowance(address, DEX_ADDRESS);
+                
+                if (allowance < amountWei) {
+                    setStatus("📝 Asking for signature (Approve)...");
+                    const txApprove = await tokenA.approve(DEX_ADDRESS, ethers.parseUnits("1000000", 18)); // Approve huge amount
+                    await txApprove.wait();
+                    setStatus("✅ Approved! Now Swapping...");
+                }
+
+                // 2. Execute Swap
+                setStatus("🌪️ Swapping Gold for Silver...");
+                const txSwap = await dexContract.swapAforB(amountWei, 0); // 0 slippage for demo
+                
+                setStatus("⏳ Mining the spell...");
+                await txSwap.wait();
+
+                setStatus("🎉 WISH GRANTED! Swap Complete!");
+                document.getElementById("amountIn").value = "";
+                
+                // 3. Refresh Balances
+                updateBalances();
+
+            } catch (err) {
+                console.error(err);
+                // Handle the specific user rejection error nicely
+                if (err.code === "ACTION_REJECTED") {
+                    setStatus("🙅‍♂️ Master cancelled the spell.");
+                } else {
+                    setStatus("❌ Glitch: " + (err.reason || err.message));
+                }
+            } finally {
+                document.getElementById("swapBtn").disabled = false;
+            }
+        }
+
+        function setStatus(msg) {
+            document.getElementById("status").innerText = msg;
+        }
+    </script>
+</body>
+</html>
